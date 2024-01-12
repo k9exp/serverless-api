@@ -1,32 +1,56 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
+import { Hono } from 'hono';
+import { Pool } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-serverless';
+import { product } from './db/schema';
 
-export interface Env {
-	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
-	// MY_KV_NAMESPACE: KVNamespace;
-	//
-	// Example binding to Durable Object. Learn more at https://developers.cloudflare.com/workers/runtime-apis/durable-objects/
-	// MY_DURABLE_OBJECT: DurableObjectNamespace;
-	//
-	// Example binding to R2. Learn more at https://developers.cloudflare.com/workers/runtime-apis/r2/
-	// MY_BUCKET: R2Bucket;
-	//
-	// Example binding to a Service. Learn more at https://developers.cloudflare.com/workers/runtime-apis/service-bindings/
-	// MY_SERVICE: Fetcher;
-	//
-	// Example binding to a Queue. Learn more at https://developers.cloudflare.com/queues/javascript-apis/
-	// MY_QUEUE: Queue;
-}
-
-export default {
-	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		return new Response('Hello World!');
-	},
+export type Env = {
+	DATABASE_URL: string;
 };
+
+const app = new Hono<{ Bindings: Env }>();
+
+app.get('/', async (c) => {
+	try {
+		const client = new Pool({ connectionString: c.env.DATABASE_URL });
+		const db = drizzle(client);
+
+		const result = await db.select().from(product);
+
+		return c.json({
+			result,
+		});
+	} catch (error) {
+		console.log(error);
+		return c.json(
+			{
+				error,
+			},
+			400
+		);
+	}
+});
+
+app.post('/', async (c) => {
+	try {
+		const client = new Pool({ connectionString: c.env.DATABASE_URL });
+		const db = drizzle(client);
+
+		await db.insert(product).values({
+			name: 'New Product',
+			description: 'The description of the product',
+			price: 99.99,
+		});
+
+		return c.text('Added product\n', 200);
+	} catch (error) {
+		console.log(error);
+		return c.json(
+			{
+				error,
+			},
+			400
+		);
+	}
+});
+
+export default app;
